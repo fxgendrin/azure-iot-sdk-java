@@ -1093,7 +1093,7 @@ public class DeviceTwinTest
         DeviceTwin testTwin = DeviceTwin.createFromConnectionString(connectionString);
 
         //act
-        testTwin.queryTwin(null);
+        testTwin.queryTwin((String) null);
     }
 
     @Test (expected = IllegalArgumentException.class)

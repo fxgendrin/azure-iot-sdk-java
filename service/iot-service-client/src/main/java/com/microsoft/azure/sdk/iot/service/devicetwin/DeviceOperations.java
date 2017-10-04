@@ -119,6 +119,8 @@ public class DeviceOperations
         /* Codes_SRS_DEVICE_OPERATIONS_21_014: [The request shall add to the HTTP header a `Content-Type` key with `application/json; charset=utf-8`.] */
         request.setHeaderField(CONTENT_TYPE, ACCEPT_VALUE + "; " + ACCEPT_CHARSET);
 
+        request.setHeaderField("Content-Length", "0"); //String.valueOf(payload.length)
+
         if (headers != null)
         {
             //SRS_DEVICE_OPERATIONS_25_019: [The request shall add to the HTTP header all the additional custom headers set for this request.]

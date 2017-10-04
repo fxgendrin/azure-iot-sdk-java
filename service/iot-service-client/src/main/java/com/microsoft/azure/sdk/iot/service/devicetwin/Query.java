@@ -31,9 +31,6 @@ public class Query
     private String query;
     private boolean isSqlQuery;
 
-    private String requestContinuationToken;
-    private String responseContinuationToken;
-
     private QueryType requestQueryType;
     private QueryType responseQueryType;
 
@@ -71,8 +68,6 @@ public class Query
 
         this.pageSize = pageSize;
         this.query = query;
-        this.requestContinuationToken = null;
-        this.responseContinuationToken = null;
         this.requestQueryType = requestQueryType;
         this.responseQueryType = QueryType.UNKNOWN;
         this.queryResponse = null;
@@ -102,47 +97,37 @@ public class Query
 
         this.pageSize = pageSize;
         this.query = null;
-        this.requestContinuationToken = null;
-        this.responseContinuationToken = null;
         this.requestQueryType = requestQueryType;
         this.responseQueryType = QueryType.UNKNOWN;
         this.queryResponse = null;
         this.isSqlQuery = false;
     }
 
-    /**
-     * Continuation token to be used for next query request
-     * @param continuationToken token to be used for next query request. Can be {@code null}
-     * @throws IOException if sending the request is unsuccessful because of input parameters
-     * @throws IotHubException if sending the request is unsuccessful at the Hub
-     */
-    private void continueQuery(String continuationToken) throws IOException, IotHubException
+    public Query(QueryOptions options, QueryType requestQueryType) throws IllegalArgumentException
     {
-        //Codes_SRS_QUERY_25_005: [The method shall update the request continuation token and request pagesize which shall be used for processing subsequent query request.]
-        this.requestContinuationToken = continuationToken;
-        //Codes_SRS_QUERY_25_018: [The method shall send the query request again.]
-        sendQueryRequest(this.iotHubConnectionString, this.url, this.httpMethod, this.timeout);
-    }
-
-    /**
-     * Continuation token and page size to be used for next query request
-     * @param continuationToken token to be used for next query request. Can be {@code null}
-     * @param pageSize size batch for this query
-     * @throws IOException if sending the request is unsuccessful because of input parameters
-     * @throws IotHubException if sending the request is unsuccessful at the Hub
-     */
-    private void continueQuery(String continuationToken, int pageSize) throws IOException, IotHubException
-    {
-        if (pageSize <= 0)
+        if (options.getContinuationToken() == null || options.getContinuationToken().isEmpty())
         {
-            //Codes_SRS_QUERY_25_006: [If the pagesize is zero or negative the constructor shall throw an IllegalArgumentException.]
-            throw new IllegalArgumentException("Page Size cannot be zero or negative");
+            throw new IllegalArgumentException("continuation token cannot be null or empty");
         }
 
-        this.pageSize = pageSize;
-        this.requestContinuationToken = continuationToken;
+        if (requestQueryType == null || requestQueryType == QueryType.UNKNOWN)
+        {
+            //Codes_SRS_QUERY_25_004: [If the QueryType is null or unknown then the constructor shall throw an IllegalArgumentException.]
+            throw new IllegalArgumentException("Cannot process a unknown type query");
+        }
+
+        this.pageSize = 0; //TODO????
+        this.query = null;
+        this.requestQueryType = requestQueryType;
+        this.responseQueryType = QueryType.UNKNOWN;
+        this.queryResponse = null;
+        this.isSqlQuery = false;
+    }
+
+    private void continueQuery(QueryOptions options) throws IOException, IotHubException
+    {
         //Codes_SRS_QUERY_25_018: [The method shall send the query request again.]
-        sendQueryRequest(this.iotHubConnectionString, this.url, this.httpMethod, this.timeout);
+        sendQueryRequest(this.iotHubConnectionString, this.url, this.httpMethod, this.timeout, options.getContinuationToken());
     }
 
     /**
@@ -155,10 +140,11 @@ public class Query
      * @throws IOException If any of the input parameters are not valid
      * @throws IotHubException If HTTP response other then status ok is received
      */
-    public QueryResponse sendQueryRequest(IotHubConnectionString iotHubConnectionString,
-                                   URL url,
-                                   HttpMethod method,
-                                   Long timeoutInMs) throws IOException, IotHubException
+    public void sendQueryRequest(IotHubConnectionString iotHubConnectionString,
+                          URL url,
+                          HttpMethod method,
+                          Long timeoutInMs,
+                          String continuationToken) throws IOException, IotHubException
     {
         if (iotHubConnectionString == null || url == null || method == null)
         {
@@ -175,38 +161,42 @@ public class Query
         byte[] payload = null;
         Map<String, String> queryHeaders = new HashMap<>();
 
-        if (this.requestContinuationToken != null)
+        if (continuationToken != null)
         {
-            queryHeaders.put(CONTINUATION_TOKEN_KEY, requestContinuationToken);
+            queryHeaders.put(CONTINUATION_TOKEN_KEY, continuationToken);
         }
         //Codes_SRS_QUERY_25_007: [The method shall set the http headers x-ms-continuation and x-ms-max-item-count with request continuation token and page size if they were not null.]
         queryHeaders.put(PAGE_SIZE_KEY, String.valueOf(pageSize));
 
         DeviceOperations.setHeaders(queryHeaders);
 
-        if (isSqlQuery)
+        boolean dog = true;
+
+        if (isSqlQuery && dog)
         {
             //Codes_SRS_QUERY_25_008: [The method shall obtain the serilaized query by using QueryRequestParser.]
             QueryRequestParser requestParser = new QueryRequestParser(this.query);
-            payload = requestParser.toJson().getBytes();
+            String b = requestParser.toJson();
+            payload = b.getBytes();
         }
         else
         {
-            payload = new byte[0];
+            payload = "{\"query\":\"select * from devices\"}".getBytes();
+            //payload = new byte[0];
         }
 
         //Codes_SRS_QUERY_25_009: [The method shall use the provided HTTP Method and send request to IotHub with the serialized body over the provided URL.]
         HttpResponse httpResponse = DeviceOperations.request(iotHubConnectionString, url, method, payload, null, timeoutInMs);
 
-        this.responseContinuationToken = null;
         Map<String, String> headers = httpResponse.getHeaderFields();
         //Codes_SRS_QUERY_25_010: [The method shall read the continuation token (x-ms-continuation) and reponse type (x-ms-item-type) from the HTTP Headers and save it.]
+        String newContinuationToken = null;
         for (Map.Entry<String, String> header : headers.entrySet())
         {
             switch (header.getKey())
             {
                 case CONTINUATION_TOKEN_KEY:
-                    this.responseContinuationToken = header.getValue();
+                    newContinuationToken = header.getValue();
                     break;
                 case ITEM_TYPE_KEY:
                     this.responseQueryType = QueryType.fromString(header.getValue());
@@ -229,18 +219,7 @@ public class Query
         }
 
         //Codes_SRS_QUERY_25_013: [The method shall create a QueryResponse object with the contents from the response body and save it.]
-        this.queryResponse = new QueryResponse(new String(httpResponse.getBody()));
-        return this.queryResponse;
-    }
-
-    /**
-     * Getter for the continuation token received on response
-     * @return continuation token. Can be {@code null}.
-     */
-    private String getContinuationToken()
-    {
-        //Codes_SRS_QUERY_25_014: [The method shall return the continuation token found in response to a query (which can be null).]
-        return this.responseContinuationToken;
+        this.queryResponse = new QueryResponse(new String(httpResponse.getBody()), newContinuationToken);
     }
 
     /**
@@ -253,10 +232,12 @@ public class Query
     {
         //Codes_SRS_QUERY_25_015: [The method shall return true if next element from QueryResponse is available and false otherwise.]
         boolean isNextAvailable = this.queryResponse.hasNext();
-        if (!isNextAvailable && this.getContinuationToken() != null)
+        if (!isNextAvailable && this.queryResponse.getContinuationToken() != null)
         {
             //Codes_SRS_QUERY_25_021: [If no further query response is available, then this method shall continue to request query to IotHub if continuation token is available.]
-            this.continueQuery(this.getContinuationToken());
+            QueryOptions options = new QueryOptions();
+            options.setContinuationToken(this.queryResponse.getContinuationToken());
+            this.continueQuery(options);
             return this.queryResponse.hasNext();
         }
         else
@@ -285,6 +266,35 @@ public class Query
            //Codes_SRS_QUERY_25_022: [The method shall check if any further elements are available by calling hasNext and if none is available then it shall throw NoSuchElementException.]
            throw new NoSuchElementException();
        }
+    }
 
+    /**
+     * Returns the availability of next element in the query response
+     * @return the availability of next element in the query response
+     * @throws IOException if sending the request is unsuccessful because of input parameters
+     * @throws IotHubException if sending the request is unsuccessful at the Hub
+     */
+    public boolean hasNext(QueryOptions options) throws IOException, IotHubException
+    {
+        this.continueQuery(options);
+        return this.hasNext();
+    }
+
+    /**
+     * provides the next element in query response
+     * @return the next element in query response
+     * @throws IOException if sending the request is unsuccessful because of input parameters
+     * @throws IotHubException if sending the request is unsuccessful at the Hub
+     * @throws NoSuchElementException if no further elements are available
+     */
+    public Object next(QueryOptions options) throws IOException, IotHubException, NoSuchElementException
+    {
+        this.continueQuery(options);
+        return this.next();
+    }
+
+    public String getContinuationToken()
+    {
+        return this.queryResponse.getContinuationToken();
     }
 }

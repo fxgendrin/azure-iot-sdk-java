@@ -114,7 +114,7 @@ public class RawTwinQueryTest
         RawTwinQuery rawTwinQuery = RawTwinQuery.createFromConnectionString(VALID_CONNECTION_STRING);
 
         //act
-        rawTwinQuery.query(null);
+        rawTwinQuery.query((String) null);
     }
 
     @Test (expected = IllegalArgumentException.class)

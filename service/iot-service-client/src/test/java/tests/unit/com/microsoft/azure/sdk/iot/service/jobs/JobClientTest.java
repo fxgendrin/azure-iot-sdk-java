@@ -1885,7 +1885,7 @@ public class JobClientTest
         JobClient testJobClient = JobClient.createFromConnectionString(connectionString);
 
         //act
-        testJobClient.queryDeviceJob(null);
+        testJobClient.queryDeviceJob((String) null);
     }
 
     @Test (expected = IllegalArgumentException.class)

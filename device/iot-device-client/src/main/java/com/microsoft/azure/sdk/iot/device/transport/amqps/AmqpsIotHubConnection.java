@@ -303,9 +303,11 @@ public final class AmqpsIotHubConnection extends BaseHandler
         {
             this.session.close();
         }
-        if (this.connection != null)
 
+        if (this.connection != null)
+        {
             this.connection.close();
+        }
 
         // Codes_SRS_AMQPSIOTHUBCONNECTION_15_014: [The function shall stop the Proton reactor.]
 

@@ -16,13 +16,14 @@ import java.util.Iterator;
 public class QueryResponse implements Iterator<Object>
 {
     private Iterator<?> responseElementsIterator;
+    private String continuationToken;
 
     /**
      * Creates an object for the query response
      * @param jsonString json response for query to parse
      * @throws IOException If any of the input parameters are invalid
      */
-    QueryResponse(String jsonString) throws IOException
+    QueryResponse(String jsonString, String continuationToken) throws IOException
     {
         if (jsonString == null || jsonString.length() == 0)
         {
@@ -33,6 +34,18 @@ public class QueryResponse implements Iterator<Object>
         //Codes_SRS_QUERY_RESPONSE_25_001: [The constructor shall parse the json response using QueryResponseParser and set the iterator.]
         QueryResponseParser responseParser = new QueryResponseParser(jsonString);
         this.responseElementsIterator = responseParser.getJsonItems().iterator();
+
+        this.continuationToken = continuationToken;
+    }
+
+    /**
+     * Getter for ContinuationToken
+     *
+     * @return The value of ContinuationToken
+     */
+    String getContinuationToken()
+    {
+        return continuationToken;
     }
 
     /**

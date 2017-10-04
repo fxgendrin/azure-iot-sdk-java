@@ -40,6 +40,7 @@ public class JobClientIT
     private static final String STANDARD_PROPERTY_HOMETEMP = "HomeTemp(F)";
 
     private static final int MAX_DEVICES = 1;
+    private static final int PAGE_SIZE = 2;
 
     private static String DEVICE_ID_NAME = "E2EJavaJob";
     private static String JOB_ID_NAME = "JobTest";
@@ -509,5 +510,87 @@ public class JobClientIT
 
         // asserts for the client side.
         assertEquals(0, deviceTestManger.getStatusError());
+    }
+
+    @Test
+    public void testQueryTwinWithContinuationToken() throws IOException, InterruptedException, IotHubException, NoSuchAlgorithmException, URISyntaxException
+    {
+        //if (PAGE_SIZE >= MAX_DEVICES)
+        //{
+        //    fail("Configurations for this test are invalid. MAX_DEVICES must be larger than PAGE_SIZE for this scenario to be tested.");
+        //}
+
+        Map<String, Exception> jobExceptions = new ConcurrentHashMap<>();
+        DeviceTestManager deviceTestManger = devices.get(0);
+        final String deviceId = deviceTestManger.getDeviceId();
+        Map<String, JobResult> jobResults = new HashMap<>();
+        String jobId = JOB_ID_NAME + UUID.randomUUID();
+        try
+        {
+            final String queryCondition = "DeviceId IN ['" + deviceId + "']";
+            jobClient.scheduleDeviceMethod(
+                    jobId, queryCondition,
+                    DeviceEmulator.METHOD_LOOPBACK, RESPONSE_TIMEOUT, CONNECTION_TIMEOUT, PAYLOAD_STRING,
+                    new Date(), MAX_EXECUTION_TIME_IN_MS);
+
+            JobResult jobResult = jobClient.getJob(jobId);
+            while(jobResult.getJobStatus() != JobStatus.completed)
+            {
+                Thread.sleep(MAXIMUM_TIME_TO_WAIT_FOR_IOTHUB);
+                jobResult = jobClient.getJob(jobId);
+            }
+            jobResult = queryDeviceJobResult(jobId, JobType.scheduleDeviceMethod, JobStatus.completed);
+            jobResults.put(jobId, jobResult);
+        }
+        catch (IotHubException | IOException |InterruptedException e)
+        {
+            jobExceptions.put(jobId, e);
+        }
+
+        SqlQuery sqlQueryEvenDevices = SqlQuery.createSqlQuery("*", SqlQuery.FromType.JOBS, null, null);
+        Query jobQuery = jobClient.queryDeviceJob(sqlQueryEvenDevices.getQuery(), PAGE_SIZE);
+
+        // Run a query until a continuation token is generated (after the second page is retrieved). Save that token
+        // and save the third page of query results
+        ArrayList<JobResult> queriedJobResults = new ArrayList<>();
+        String continuationToken = null;
+        int jobResultsRetrievedFromSecondPage = 0;
+        for (int jobIndex = 0; jobIndex < 5; jobIndex++)//(jobIndex < PAGE_SIZE * 2) && (jobIndex < MAX_DEVICES); jobIndex++)
+        {
+            //TODO only has two results to query right now
+            queriedJobResults.add(jobClient.getNextJob(jobQuery));
+
+            if (jobIndex >= PAGE_SIZE)
+            {
+                jobResultsRetrievedFromSecondPage++;
+            }
+
+            if (jobIndex == 0)
+            {
+                //grab continuation token so that the second page of query results can be queried twice. Once in this loop,
+                // and once by a separate query below. The query results being the same prove that the continuation token works
+                continuationToken = jobQuery.getContinuationToken();
+            }
+        }
+
+        // Re-run the same query using the saved continuation token, expecting to receive the same page of results
+        ArrayList<JobResult> twiceQueriedJobResults = new ArrayList<>();
+        QueryOptions options = new QueryOptions();
+        options.setContinuationToken(continuationToken);
+        jobClient.hasNextJob(jobQuery, options);
+        for (int deviceTwinDeviceToQueryAgain = 0; deviceTwinDeviceToQueryAgain < jobResultsRetrievedFromSecondPage; deviceTwinDeviceToQueryAgain++)
+        {
+            twiceQueriedJobResults.add(jobClient.getNextJob(jobQuery));
+        }
+
+        // Assert
+        assertEquals(jobResultsRetrievedFromSecondPage, twiceQueriedJobResults.size());
+        int secondPageIndex = PAGE_SIZE;
+        for (int deviceTwinDeviceIndex = 0; deviceTwinDeviceIndex < jobResultsRetrievedFromSecondPage; deviceTwinDeviceIndex++)
+        {
+            JobResult expectedDeviceTwinDevice = queriedJobResults.get(secondPageIndex + deviceTwinDeviceIndex);
+            JobResult actualDeviceTwinDevice = twiceQueriedJobResults.get(deviceTwinDeviceIndex);
+            assertEquals(expectedDeviceTwinDevice.getDeviceId(), actualDeviceTwinDevice.getDeviceId());
+        }
     }
 }

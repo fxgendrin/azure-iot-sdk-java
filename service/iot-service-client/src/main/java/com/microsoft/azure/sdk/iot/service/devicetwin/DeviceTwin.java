@@ -390,7 +390,19 @@ public class DeviceTwin
 
         //Codes_SRS_DEVICETWIN_25_049: [ The method shall build the URL for this operation by calling getUrlTwinQuery ]
         //Codes_SRS_DEVICETWIN_25_051: [ The method shall send a Query Request to IotHub as HTTP Method Post on the query Object by calling sendQueryRequest.]
-        deviceTwinQuery.sendQueryRequest(iotHubConnectionString, iotHubConnectionString.getUrlTwinQuery(), HttpMethod.POST, USE_DEFAULT_TIMEOUT);
+        deviceTwinQuery.sendQueryRequest(iotHubConnectionString, iotHubConnectionString.getUrlTwinQuery(), HttpMethod.POST, USE_DEFAULT_TIMEOUT, null);
+        return deviceTwinQuery;
+    }
+
+    public synchronized Query queryTwin(QueryOptions options) throws IotHubException, IOException
+    {
+        if (options.getContinuationToken() == null || options.getContinuationToken().isEmpty())
+        {
+            throw new IllegalArgumentException("continuation token cannot be null or empty");
+        }
+
+        Query deviceTwinQuery = new Query(options, QueryType.TWIN);
+        deviceTwinQuery.sendQueryRequest(iotHubConnectionString, iotHubConnectionString.getUrlTwinQuery(), HttpMethod.POST, USE_DEFAULT_TIMEOUT, options.getContinuationToken());
         return deviceTwinQuery;
     }
 
@@ -425,6 +437,12 @@ public class DeviceTwin
         }
 
         //Codes_SRS_DEVICETWIN_25_055: [ If a queryResponse is available, this method shall return true as is to the user, and false otherwise.. ]
+        return deviceTwinQuery.hasNext();
+    }
+
+    public synchronized boolean hasNextDeviceTwin(Query deviceTwinQuery, QueryOptions options) throws IotHubException, IOException
+    {
+        deviceTwinQuery.sendQueryRequest(iotHubConnectionString, iotHubConnectionString.getUrlTwinQuery(), HttpMethod.POST, USE_DEFAULT_TIMEOUT, options.getContinuationToken());
         return deviceTwinQuery.hasNext();
     }
 
@@ -468,6 +486,12 @@ public class DeviceTwin
             //Codes_SRS_DEVICETWIN_25_060: [ If the next element from the query response is an object other than String, then this method shall throw IOException ]
             throw new IOException("Received a response that could not be parsed");
         }
+    }
+
+    public synchronized DeviceTwinDevice getNextDeviceTwin(Query deviceTwinQuery, QueryOptions options) throws IOException, IotHubException, NoSuchElementException
+    {
+        deviceTwinQuery.sendQueryRequest(iotHubConnectionString, iotHubConnectionString.getUrlTwinQuery(), HttpMethod.POST, USE_DEFAULT_TIMEOUT, options.getContinuationToken());
+        return this.getNextDeviceTwin(deviceTwinQuery);
     }
 
     /**
